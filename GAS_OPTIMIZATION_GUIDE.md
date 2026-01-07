@@ -246,7 +246,3 @@ contract GasOptimizationTest is Test {
 - [Custom Errors](https://blog.soliditylang.org/2021/04/21/custom-errors/)
 
 ---
-
-**准备好开始优化了吗？** 🚀
-
-建议从Selector缓存开始 - 最简单且立即见效！

@@ -39,16 +39,6 @@ contracts/diamond/
 - ✅ 部署脚本 (`script/foundry/`)
 - ✅ 验证工具 (`verify-diamond.sh`)
 
-### 文档 (8份)
-1. **[DIAMOND_README.md](./DIAMOND_README.md)** - 快速开始
-2. **[FOUNDRY_GUIDE.md](./FOUNDRY_GUIDE.md)** - 完整使用指南
-3. **[GAS_OPTIMIZATION_GUIDE.md](./GAS_OPTIMIZATION_GUIDE.md)** - Gas优化实施
-4. **[final_summary.md](../.gemini/antigravity/brain/.../final_summary.md)** - 项目总结
-5. **[walkthrough.md](../.gemini/antigravity/brain/.../walkthrough.md)** - 技术演练
-6. **[gas-optimization-analysis.md](../.gemini/antigravity/brain/.../gas-optimization-analysis.md)** - 优化分析
-7. **[implementation_plan.md](../.gemini/antigravity/brain/.../implementation_plan.md)** - 实施计划
-8. **[task.md](../.gemini/antigravity/brain/.../task.md)** - 任务清单
-
 ---
 
 ## 🚀 快速开始
@@ -94,7 +84,6 @@ forge script script/foundry/DeployDiamond.s.sol --broadcast
 **新手入门** → [DIAMOND_README.md](./DIAMOND_README.md)  
 **详细指南** → [FOUNDRY_GUIDE.md](./FOUNDRY_GUIDE.md)  
 **优化方案** → [GAS_OPTIMIZATION_GUIDE.md](./GAS_OPTIMIZATION_GUIDE.md)  
-**项目总结** → [final_summary.md](../.gemini/antigravity/brain/.../final_summary.md)
 
 ---
 
