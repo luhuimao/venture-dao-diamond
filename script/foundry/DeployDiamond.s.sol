@@ -2,17 +2,17 @@
 pragma solidity ^0.8.0;
 
 import "forge-std/Script.sol";
-import "../../contracts/diamond/Diamond.sol";
-import "../../contracts/diamond/DAOFactory.sol";
-import "../../contracts/diamond/facets/DiamondCutFacet.sol";
-import "../../contracts/diamond/facets/DiamondLoupeFacet.sol";
-import "../../contracts/diamond/facets/OwnershipFacet.sol";
-import "../../contracts/diamond/facets/ConfigurationFacet.sol";
-import "../../contracts/diamond/facets/MembershipFacet.sol";
-import "../../contracts/diamond/facets/ProposalFacet.sol";
-import "../../contracts/diamond/facets/GovernanceFacet.sol";
-import "../../contracts/diamond/facets/FundingFacet.sol";
-import "../../contracts/diamond/upgradeInitializers/DiamondInit.sol";
+import "../../contracts/Diamond.sol";
+import "../../contracts/DAOFactory.sol";
+import "../../contracts/facets/DiamondCutFacet.sol";
+import "../../contracts/facets/DiamondLoupeFacet.sol";
+import "../../contracts/facets/OwnershipFacet.sol";
+import "../../contracts/facets/ConfigurationFacet.sol";
+import "../../contracts/facets/MembershipFacet.sol";
+import "../../contracts/facets/ProposalFacet.sol";
+import "../../contracts/facets/GovernanceFacet.sol";
+import "../../contracts/facets/FundingFacet.sol";
+import "../../contracts/upgradeInitializers/DiamondInit.sol";
 
 /**
  * @title DeployDiamond

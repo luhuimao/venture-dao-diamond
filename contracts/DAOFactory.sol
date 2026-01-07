@@ -6,6 +6,7 @@ import {DiamondCutFacet} from "./facets/DiamondCutFacet.sol";
 import {DiamondLoupeFacet} from "./facets/DiamondLoupeFacet.sol";
 import {OwnershipFacet} from "./facets/OwnershipFacet.sol";
 import {DiamondInit} from "./upgradeInitializers/DiamondInit.sol";
+import {DAOInit} from "./upgradeInitializers/DAOInit.sol";
 import {LibDiamond} from "./libraries/LibDiamond.sol";
 import {LibDAOStorage} from "./libraries/LibDAOStorage.sol";
 import {IDiamondCut} from "./interfaces/IDiamondCut.sol";
@@ -28,6 +29,9 @@ contract DAOFactory {
         string daoType; // "flex", "vintage", "collective"
         address[] founders;
         uint256[] allocations;
+        uint256 votingPeriod;
+        uint256 quorum;
+        uint256 majority;
     }
 
     // Facet addresses (deployed once, reused for all DAOs)
@@ -35,6 +39,7 @@ contract DAOFactory {
     address public immutable diamondLoupeFacet;
     address public immutable ownershipFacet;
     address public immutable diamondInit;
+    address public immutable daoInit;
 
     // Future business facets (to be added in Phase 2)
     address public governanceFacet;
@@ -49,6 +54,7 @@ contract DAOFactory {
         diamondLoupeFacet = address(new DiamondLoupeFacet());
         ownershipFacet = address(new OwnershipFacet());
         diamondInit = address(new DiamondInit());
+        daoInit = address(new DAOInit());
     }
 
     /**
@@ -66,10 +72,11 @@ contract DAOFactory {
             "DAOFactory: Founders/allocations mismatch"
         );
 
-        // 1. Deploy Diamond proxy
-        diamond = _deployDiamond(msg.sender);
+        // 1. Deploy Diamond proxy with factory as temporary owner
+        // This allows factory to install facets
+        diamond = _deployDiamond(address(this));
 
-        // 2. Install core facets
+        // 2. Install core facets (factory is owner, so this works)
         _installCoreFacets(diamond);
 
         // 3. Install business facets
@@ -81,6 +88,9 @@ contract DAOFactory {
         // 5. Initialize DAO data
         _initializeDAOData(diamond, config);
 
+        // 6. Transfer ownership to the actual creator
+        _transferOwnership(diamond, msg.sender);
+
         emit DAOCreated(diamond, msg.sender, config.daoType, config.name);
         return diamond;
     }
@@ -91,6 +101,16 @@ contract DAOFactory {
     function _deployDiamond(address owner) internal returns (address) {
         Diamond diamond = new Diamond(owner, diamondCutFacet);
         return address(diamond);
+    }
+
+    /**
+     * @notice Transfer Diamond ownership
+     */
+    function _transferOwnership(address diamond, address newOwner) internal {
+        // Get OwnershipFacet interface
+        bytes4 selector = bytes4(keccak256("transferOwnership(address)"));
+        (bool success, ) = diamond.call(abi.encodeWithSelector(selector, newOwner));
+        require(success, "DAOFactory: Ownership transfer failed");
     }
 
     /**
@@ -161,7 +181,7 @@ contract DAOFactory {
         });
 
         // MembershipFacet - basic selectors
-        bytes4[] memory memberSelectors = new bytes4[](12);
+        bytes4[] memory memberSelectors = new bytes4[](14);
         memberSelectors[0] = bytes4(keccak256("registerMember(address,uint256)"));
         memberSelectors[1] = bytes4(keccak256("removeMember(address)"));
         memberSelectors[2] = bytes4(keccak256("addSteward(address)"));
@@ -174,6 +194,8 @@ contract DAOFactory {
         memberSelectors[9] = bytes4(keccak256("whitelistInvestor(address)"));
         memberSelectors[10] = bytes4(keccak256("whitelistProposer(address)"));
         memberSelectors[11] = bytes4(keccak256("batchRegisterMembers(address[],uint256[])"));
+        memberSelectors[12] = bytes4(keccak256("isInvestorWhitelisted(address)"));
+        memberSelectors[13] = bytes4(keccak256("isProposerWhitelisted(address)"));
 
         cuts[1] = IDiamondCut.FacetCut({
             facetAddress: membershipFacet,
@@ -248,26 +270,34 @@ contract DAOFactory {
 
     /**
      * @notice Initialize DAO-specific data
-     * @dev Uses delegatecall context, so storage is in Diamond
+     * @dev Uses delegatecall to DAOInit to set DAO metadata and register founders
      */
     function _initializeDAOData(
         address diamond,
         DAOConfig calldata config
     ) internal {
-        // Access DAO storage through library
-        // Note: This won't work directly in factory, needs to be done via init contract
-        // For now, this is a placeholder showing the pattern
-        
-        // In Phase 2, we'll create a DAOInit contract that:
-        // 1. Sets DAO name, type, creator
-        // 2. Registers founders as members
-        // 3. Allocates initial shares
-        // 4. Sets default configurations
+        // Prepare init call to DAOInit
+        bytes memory initCalldata = abi.encodeWithSignature(
+            "initDAO(string,string,address,address[],uint256[],uint256,uint256,uint256)",
+            config.name,
+            config.daoType,
+            msg.sender, // creator
+            config.founders,
+            config.allocations,
+            config.votingPeriod,
+            config.quorum,
+            config.majority
+        );
+
+        // Execute via diamondCut with empty cuts
+        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](0);
+        IDiamondCut(diamond).diamondCut(cuts, daoInit, initCalldata);
     }
 
     /**
-     * @notice Set business facet addresses (admin only)
+     * @notice Set business facet addresses
      * @dev Called after deploying business facets
+     * @dev In production, should be restricted to owner or made immutable
      */
     function setBusinessFacets(
         address _governanceFacet,
@@ -276,7 +306,8 @@ contract DAOFactory {
         address _proposalFacet,
         address _configurationFacet
     ) external {
-        // In production, add onlyOwner modifier
+        // No access control for flexibility in testing and initial setup
+        // In production, consider adding access control or setting in constructor
         governanceFacet = _governanceFacet;
         fundingFacet = _fundingFacet;
         membershipFacet = _membershipFacet;

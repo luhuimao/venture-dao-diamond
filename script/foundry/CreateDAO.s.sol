@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "forge-std/Script.sol";
-import "../../contracts/diamond/DAOFactory.sol";
+import "../../contracts/DAOFactory.sol";
 
 /**
  * @title CreateDAO
@@ -42,7 +42,10 @@ contract CreateDAO is Script {
             name: "My Diamond DAO",
             daoType: "flex",
             founders: founders,
-            allocations: allocations
+            allocations: allocations,
+            votingPeriod: 7 days,
+            quorum: 20,
+            majority: 50
         });
 
         // Create DAO

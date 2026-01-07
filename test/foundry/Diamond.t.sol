@@ -2,19 +2,19 @@
 pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
-import "../../contracts/diamond/Diamond.sol";
-import "../../contracts/diamond/DAOFactory.sol";
-import "../../contracts/diamond/facets/DiamondCutFacet.sol";
-import "../../contracts/diamond/facets/DiamondLoupeFacet.sol";
-import "../../contracts/diamond/facets/OwnershipFacet.sol";
-import "../../contracts/diamond/facets/ConfigurationFacet.sol";
-import "../../contracts/diamond/facets/MembershipFacet.sol";
-import "../../contracts/diamond/facets/ProposalFacet.sol";
-import "../../contracts/diamond/facets/GovernanceFacet.sol";
-import "../../contracts/diamond/facets/FundingFacet.sol";
-import "../../contracts/diamond/upgradeInitializers/DiamondInit.sol";
-import "../../contracts/diamond/interfaces/IDiamondCut.sol";
-import "../../contracts/diamond/interfaces/IDiamondLoupe.sol";
+import "../../contracts/Diamond.sol";
+import "../../contracts/DAOFactory.sol";
+import "../../contracts/facets/DiamondCutFacet.sol";
+import "../../contracts/facets/DiamondLoupeFacet.sol";
+import "../../contracts/facets/OwnershipFacet.sol";
+import "../../contracts/facets/ConfigurationFacet.sol";
+import "../../contracts/facets/MembershipFacet.sol";
+import "../../contracts/facets/ProposalFacet.sol";
+import "../../contracts/facets/GovernanceFacet.sol";
+import "../../contracts/facets/FundingFacet.sol";
+import "../../contracts/upgradeInitializers/DiamondInit.sol";
+import "../../contracts/interfaces/IDiamondCut.sol";
+import "../../contracts/interfaces/IDiamondLoupe.sol";
 
 /**
  * @title DiamondTest
@@ -41,21 +41,26 @@ contract DiamondTest is Test {
     address public charlie = address(0x3);
 
     function setUp() public {
-        // Deploy all facets
-        diamondCutFacet = new DiamondCutFacet();
-        diamondLoupeFacet = new DiamondLoupeFacet();
-        ownershipFacet = new OwnershipFacet();
+        // Deploy core facets first
+        // Deploy core facets first
+        // Note: These local variables were shadowing state variables.
+        // We assign to the state variables directly although 'factory' will deploy its own instances.
+        // For testing standalone facets if needed:
+         diamondCutFacet = new DiamondCutFacet();
+         diamondLoupeFacet = new DiamondLoupeFacet();
+         ownershipFacet = new OwnershipFacet();
         
+        // Deploy business facets
         configurationFacet = new ConfigurationFacet();
         membershipFacet = new MembershipFacet();
         proposalFacet = new ProposalFacet();
         governanceFacet = new GovernanceFacet();
         fundingFacet = new FundingFacet();
 
-        // Deploy factory
+        // Deploy factory (it will deploy its own core facets internally)
         factory = new DAOFactory();
         
-        // Set business facets
+        // Set business facets (factory has no access control on this function)
         factory.setBusinessFacets(
             address(governanceFacet),
             address(fundingFacet),
@@ -64,7 +69,7 @@ contract DiamondTest is Test {
             address(configurationFacet)
         );
 
-        // Create a DAO
+        // Create a test DAO
         address[] memory founders = new address[](3);
         founders[0] = owner;
         founders[1] = alice;
@@ -79,9 +84,13 @@ contract DiamondTest is Test {
             name: "Test DAO",
             daoType: "flex",
             founders: founders,
-            allocations: allocations
+            allocations: allocations,
+            votingPeriod: 7 days,
+            quorum: 20,
+            majority: 50
         });
 
+        // Create the DAO - this will be owned by this test contract
         diamond = payable(factory.createDAO(config));
         
         // Fund test accounts
@@ -256,7 +265,7 @@ contract DiamondTest is Test {
         // Setup
         membership.whitelistProposer(owner);
         membership.addSteward(owner);
-        membership.registerMember(alice, 10);
+        // alice is already a member (founder with 50 shares)
         
         bytes32 proposalId = proposals.submitProposal(LibDAOStorage.ProposalType.Funding);
         proposals.sponsorProposal(proposalId);
@@ -277,8 +286,8 @@ contract DiamondTest is Test {
         // Setup
         membership.whitelistProposer(owner);
         membership.addSteward(owner);
-        membership.registerMember(alice, 100);
-        membership.registerMember(bob, 100);
+        // alice and bob are already members (founders with 50 shares each)
+        // Note: They already have 50 shares from being founders
         
        bytes32 proposalId = proposals.submitProposal(LibDAOStorage.ProposalType.Funding);
         proposals.sponsorProposal(proposalId);
@@ -333,9 +342,13 @@ contract DiamondTest is Test {
         
         // Setup
         membership.whitelistProposer(owner);
+        membership.addSteward(owner); // Need steward to sponsor
         membership.whitelistInvestor(alice);
         
         bytes32 proposalId = proposals.submitProposal(LibDAOStorage.ProposalType.Funding);
+        
+        // Sponsor proposal first (so it becomes Active)
+        proposals.sponsorProposal(proposalId);
         
         // Deposit
         vm.prank(alice);
@@ -367,7 +380,10 @@ contract DiamondTest is Test {
             name: "Gas Test DAO",
             daoType: "flex",
             founders: founders,
-            allocations: allocations
+            allocations: allocations,
+            votingPeriod: 7 days,
+            quorum: 20,
+            majority: 50
         });
 
         uint256 gasBefore = gasleft();
@@ -397,7 +413,7 @@ contract DiamondTest is Test {
         
         membership.whitelistProposer(owner);
         membership.addSteward(owner);
-        membership.registerMember(alice, 10);
+        // alice is already a member (founder)
         
         bytes32 proposalId = proposals.submitProposal(LibDAOStorage.ProposalType.Funding);
         proposals.sponsorProposal(proposalId);

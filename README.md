@@ -1,7 +1,5 @@
 # Venture DAO Diamond - Standalone Project
 
-> 独立的Diamond DAO项目 - 无旧代码干扰
-
 ## 🎯 这是什么？
 
 这是从完整Venture DAO项目中提取的**纯净Diamond实现**，包含：
@@ -9,8 +7,6 @@
 - ✅ 完整测试套件（60+用例）
 - ✅ 部署脚本
 - ✅ 完整文档
-
-**无旧代码干扰** - 可以直接编译和测试！
 
 ---
 
@@ -141,9 +137,6 @@ forge script script/foundry/DeployDiamond.s.sol --broadcast
 ---
 
 ## 💡 提示
-
-**从旧项目迁移?**  
-这个独立项目已经包含所有必要文件，可以直接使用。
 
 **需要帮助?**  
 查看 [FOUNDRY_GUIDE.md](./FOUNDRY_GUIDE.md)

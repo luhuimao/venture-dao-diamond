@@ -21,8 +21,8 @@ echo ""
 
 # 2. 编译Diamond合约
 echo "📌 步骤 2/4: 编译Diamond合约..."
-echo "执行: forge build contracts/diamond/ --force"
-if forge build contracts/diamond/ --force > /tmp/diamond-build.log 2>&1; then
+echo "执行: forge build "
+if forge build  > /tmp/diamond-build.log 2>&1; then
     echo "✅ Diamond合约编译成功!"
 else
     echo "❌ 编译失败. 查看日志: /tmp/diamond-build.log"
@@ -80,6 +80,9 @@ echo "========================================="
 echo ""
 echo "下一步:"
 echo "  1. 运行测试: forge test --match-contract DiamondTest"
+
+forge test --match-contract DiamondTest
+
 echo "  2. 启动Anvil: anvil"
 echo "  3. 部署: forge script script/foundry/DeployDiamond.s.sol --broadcast"
 echo ""
