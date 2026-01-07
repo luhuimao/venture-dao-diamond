@@ -11,6 +11,12 @@ import {LibDAOStorage} from "../libraries/LibDAOStorage.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 
 contract ProposalFacet {
+    // Custom Errors
+    error NotAuthorized();
+    error ProposalNotFound();
+    error InvalidStatus();
+    error OnlyStewards();
+    
     event ProposalCreated(
         bytes32 indexed proposalId,
         address indexed proposer,
@@ -51,7 +57,7 @@ contract ProposalFacet {
         ds.proposals[proposalId] = LibDAOStorage.Proposal({
             id: proposalId,
             proposer: msg.sender,
-            createdAt: block.timestamp,
+            createdAt: uint64(block.timestamp),
             votingEndTime: 0, // Set when sponsored
             yesVotes: 0,
             noVotes: 0,
@@ -73,22 +79,16 @@ contract ProposalFacet {
         LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
         LibDAOStorage.Proposal storage proposal = ds.proposals[proposalId];
         
-        require(proposal.id != bytes32(0), "ProposalFacet: Proposal not found");
-        require(
-            proposal.status == LibDAOStorage.ProposalStatus.Pending,
-            "ProposalFacet: Invalid status"
-        );
-        require(
-            ds.members[msg.sender].isSteward,
-            "ProposalFacet: Only stewards can sponsor"
-        );
+        if (proposal.id == bytes32(0)) revert ProposalNotFound();
+        if (proposal.status != LibDAOStorage.ProposalStatus.Pending) revert InvalidStatus();
+        if (!ds.members[msg.sender].isSteward) revert OnlyStewards();
         
         // Get voting period from configuration
         uint256 votingPeriod = ds.configuration[keccak256("VOTING_PERIOD")];
         if (votingPeriod == 0) votingPeriod = 7 days; // Default
         
         proposal.status = LibDAOStorage.ProposalStatus.Active;
-        proposal.votingEndTime = block.timestamp + votingPeriod;
+        proposal.votingEndTime = uint64(block.timestamp + votingPeriod);
         
         emit ProposalSponsored(proposalId, msg.sender);
     }
@@ -101,17 +101,9 @@ contract ProposalFacet {
         LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
         LibDAOStorage.Proposal storage proposal = ds.proposals[proposalId];
         
-        require(proposal.id != bytes32(0), "ProposalFacet: Proposal not found");
-        require(
-            msg.sender == proposal.proposer || 
-            msg.sender == LibDiamond.contractOwner(),
-            "ProposalFacet: Not authorized"
-        );
-        require(
-            proposal.status == LibDAOStorage.ProposalStatus.Pending ||
-            proposal.status == LibDAOStorage.ProposalStatus.Active,
-            "ProposalFacet: Cannot cancel"
-        );
+        if (proposal.id == bytes32(0)) revert ProposalNotFound();
+        if (msg.sender != proposal.proposer && msg.sender != LibDiamond.contractOwner()) revert NotAuthorized();
+        if (proposal.status != LibDAOStorage.ProposalStatus.Pending && proposal.status != LibDAOStorage.ProposalStatus.Active) revert InvalidStatus();
         
         proposal.status = LibDAOStorage.ProposalStatus.Cancelled;
         
@@ -126,15 +118,9 @@ contract ProposalFacet {
         LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
         LibDAOStorage.Proposal storage proposal = ds.proposals[proposalId];
         
-        require(proposal.id != bytes32(0), "ProposalFacet: Proposal not found");
-        require(
-            proposal.status == LibDAOStorage.ProposalStatus.Passed,
-            "ProposalFacet: Not passed"
-        );
-        require(
-            ds.members[msg.sender].isSteward,
-            "ProposalFacet: Only stewards can execute"
-        );
+        if (proposal.id == bytes32(0)) revert ProposalNotFound();
+        if (proposal.status != LibDAOStorage.ProposalStatus.Passed) revert InvalidStatus();
+        if (!ds.members[msg.sender].isSteward) revert OnlyStewards();
         
         proposal.status = LibDAOStorage.ProposalStatus.Executed;
         

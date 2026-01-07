@@ -11,6 +11,20 @@ import {LibDAOStorage} from "../libraries/LibDAOStorage.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 
 contract FundingFacet {
+    // Custom Errors
+    error ZeroAmount();
+    error ProposalNotFound();
+    error InvalidStatus();
+    error NotWhitelisted();
+    error CannotWithdraw();
+    error NoContribution();
+    error TransferFailed();
+    error NotExecuted();
+    error OnlyStewards();
+    error NoFunds();
+    error FeeTransferFailed();
+    error NoBalance();
+    
     event FundingDeposited(
         bytes32 indexed proposalId,
         address indexed investor,
@@ -32,25 +46,17 @@ contract FundingFacet {
      * @param proposalId Proposal ID
      */
     function deposit(bytes32 proposalId) external payable {
-        require(msg.value > 0, "FundingFacet: Zero amount");
+        if (msg.value == 0) revert ZeroAmount();
         
         LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
         LibDAOStorage.Proposal storage proposal = ds.proposals[proposalId];
         LibDAOStorage.FundingData storage fundingData = ds.fundingRecords[proposalId];
         
-        require(proposal.id != bytes32(0), "FundingFacet: Proposal not found");
-        require(
-            proposal.status == LibDAOStorage.ProposalStatus.Active ||
-            proposal.status == LibDAOStorage.ProposalStatus.Passed,
-            "FundingFacet: Invalid status"
-        );
+        if (proposal.id == bytes32(0)) revert ProposalNotFound();
+        if (proposal.status != LibDAOStorage.ProposalStatus.Active && proposal.status != LibDAOStorage.ProposalStatus.Passed) revert InvalidStatus();
         
         // Check investor whitelist
-        require(
-            ds.investorWhitelist[msg.sender] || 
-            ds.members[msg.sender].exists,
-            "FundingFacet: Not whitelisted"
-        );
+        if (!ds.investorWhitelist[msg.sender] && !ds.members[msg.sender].exists) revert NotWhitelisted();
         
         // Record contribution
         if (fundingData.contributions[msg.sender] == 0) {
@@ -72,22 +78,18 @@ contract FundingFacet {
         LibDAOStorage.Proposal storage proposal = ds.proposals[proposalId];
         LibDAOStorage.FundingData storage fundingData = ds.fundingRecords[proposalId];
         
-        require(proposal.id != bytes32(0), "FundingFacet: Proposal not found");
-        require(
-            proposal.status == LibDAOStorage.ProposalStatus.Failed ||
-            proposal.status == LibDAOStorage.ProposalStatus.Cancelled,
-            "FundingFacet: Cannot withdraw"
-        );
+        if (proposal.id == bytes32(0)) revert ProposalNotFound();
+        if (proposal.status != LibDAOStorage.ProposalStatus.Failed && proposal.status != LibDAOStorage.ProposalStatus.Cancelled) revert CannotWithdraw();
         
         uint256 contribution = fundingData.contributions[msg.sender];
-        require(contribution > 0, "FundingFacet: No contribution");
+        if (contribution == 0) revert NoContribution();
         
         fundingData.contributions[msg.sender] = 0;
         fundingData.totalRaised -= contribution;
         
         // Transfer funds back
         (bool success, ) = msg.sender.call{value: contribution}("");
-        require(success, "FundingFacet: Transfer failed");
+        if (!success) revert TransferFailed();
         
         emit FundingWithdrawn(proposalId, msg.sender, contribution);
     }
@@ -102,17 +104,11 @@ contract FundingFacet {
         LibDAOStorage.FundingData storage fundingData = ds.fundingRecords[proposalId];
         
         require(proposal.id != bytes32(0), "FundingFacet: Proposal not found");
-        require(
-            proposal.status == LibDAOStorage.ProposalStatus.Executed,
-            "FundingFacet: Not executed"
-        );
-        require(
-            ds.members[msg.sender].isSteward,
-            "FundingFacet: Only stewards"
-        );
+        if (proposal.status != LibDAOStorage.ProposalStatus.Executed) revert NotExecuted();
+        if (!ds.members[msg.sender].isSteward) revert OnlyStewards();
         
         uint256 totalRaised = fundingData.totalRaised;
-        require(totalRaised > 0, "FundingFacet: No funds");
+        if (totalRaised == 0) revert NoFunds();
         
         // Calculate fees
         uint256 managementFee = ds.configuration[keccak256("MANAGEMENT_FEE")];
@@ -128,7 +124,7 @@ contract FundingFacet {
         // Transfer fee
         if (feeAmount > 0) {
             (bool feeSuccess, ) = feeRecipient.call{value: feeAmount}("");
-            require(feeSuccess, "FundingFacet: Fee transfer failed");
+            if (!feeSuccess) revert FeeTransferFailed();
         }
         
         // Transfer net amount to proposer or designated recipient
@@ -138,7 +134,7 @@ contract FundingFacet {
         if (recipient == address(0)) recipient = proposal.proposer;
         
         (bool success, ) = recipient.call{value: netAmount}("");
-        require(success, "FundingFacet: Transfer failed");
+        if (!success) revert TransferFailed();
         
         fundingData.totalRaised = 0;
         
@@ -188,7 +184,7 @@ contract FundingFacet {
         LibDiamond.enforceIsContractOwner();
         
         uint256 balance = address(this).balance;
-        require(balance > 0, "FundingFacet: No balance");
+        if (balance == 0) revert NoBalance();
         
         (bool success, ) = LibDiamond.contractOwner().call{value: balance}("");
         require(success, "FundingFacet: Transfer failed");

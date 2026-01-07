@@ -46,12 +46,16 @@ contract DAOInit {
             ds.members[founder] = LibDAOStorage.Member({
                 exists: true,
                 isSteward: false,
-                shares: shares,
-                joinedAt: block.timestamp
+                shares: uint184(shares),
+                joinedAt: uint64(block.timestamp)
             });
             
             ds.memberList.push(founder);
             ds.memberCount++;
+            
+            // Update cached voting power (Optimization #3)
+            uint256 votingPower = (shares == 0 ? 1 : shares);
+            ds.totalVotingPower += votingPower;
         }
         
         // Set configurations

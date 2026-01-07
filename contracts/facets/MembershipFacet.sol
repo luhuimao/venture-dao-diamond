@@ -11,6 +11,14 @@ import {LibDAOStorage} from "../libraries/LibDAOStorage.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 
 contract MembershipFacet {
+    // Custom Errors
+    error InvalidAddress();
+    error MemberExists();
+    error NotAMember();
+    error AlreadySteward();
+    error NotASteward();
+    error LengthMismatch();
+    
     event MemberAdded(address indexed member, uint256 shares);
     event MemberRemoved(address indexed member);
     event StewardAdded(address indexed steward);
@@ -35,20 +43,24 @@ contract MembershipFacet {
      * @param shares Initial shares
      */
     function _registerMember(address member, uint256 shares) internal {
-        require(member != address(0), "MembershipFacet: Invalid address");
+        if (member == address(0)) revert InvalidAddress();
         
         LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
-        require(!ds.members[member].exists, "MembershipFacet: Member exists");
+        if (ds.members[member].exists) revert MemberExists();
         
         ds.members[member] = LibDAOStorage.Member({
             exists: true,
             isSteward: false,
-            shares: shares,
-            joinedAt: block.timestamp
+            joinedAt: uint64(block.timestamp),
+            shares: uint184(shares)
         });
         
         ds.memberList.push(member);
         ds.memberCount++;
+        
+        // Update cached voting power (Optimization #3)
+        uint256 votingPower = (shares == 0 ? 1 : shares);
+        ds.totalVotingPower += votingPower;
         
         emit MemberAdded(member, shares);
     }
@@ -60,12 +72,16 @@ contract MembershipFacet {
     function removeMember(address member) external {
         LibDiamond.enforceIsContractOwner();
         LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
-        require(ds.members[member].exists, "MembershipFacet: Not a member");
+        if (!ds.members[member].exists) revert NotAMember();
         
         // Remove from stewards if applicable
         if (ds.members[member].isSteward) {
             _removeSteward(member);
         }
+        
+        // Update cached voting power (Optimization #3)
+        uint256 votingPower = (ds.members[member].shares == 0 ? 1 : ds.members[member].shares);
+        ds.totalVotingPower -= votingPower;
         
         delete ds.members[member];
         ds.memberCount--;
@@ -86,7 +102,7 @@ contract MembershipFacet {
             _registerMember(steward, 0);
         }
         
-        require(!ds.members[steward].isSteward, "MembershipFacet: Already steward");
+        if (ds.members[steward].isSteward) revert AlreadySteward();
         
         ds.members[steward].isSteward = true;
         ds.stewards.push(steward);
@@ -105,7 +121,7 @@ contract MembershipFacet {
 
     function _removeSteward(address steward) internal {
         LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
-        require(ds.members[steward].isSteward, "MembershipFacet: Not a steward");
+        if (!ds.members[steward].isSteward) revert NotASteward();
         
         ds.members[steward].isSteward = false;
         
@@ -131,9 +147,15 @@ contract MembershipFacet {
     function updateShares(address member, uint256 newShares) external {
         LibDiamond.enforceIsContractOwner();
         LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
-        require(ds.members[member].exists, "MembershipFacet: Not a member");
+        if (!ds.members[member].exists) revert NotAMember();
         
-        ds.members[member].shares = newShares;
+        // Update cached voting power (Optimization #3)
+        uint256 oldShares = ds.members[member].shares;
+        uint256 oldPower = (oldShares == 0 ? 1 : oldShares);
+        uint256 newPower = (newShares == 0 ? 1 : newShares);
+        ds.totalVotingPower = ds.totalVotingPower - oldPower + newPower;
+        
+        ds.members[member].shares = uint184(newShares);
         emit SharesUpdated(member, newShares);
     }
 
@@ -167,7 +189,7 @@ contract MembershipFacet {
         uint256[] calldata shares
     ) external {
         LibDiamond.enforceIsContractOwner();
-        require(members.length == shares.length, "MembershipFacet: Length mismatch");
+        if (members.length != shares.length) revert LengthMismatch();
         
         uint256 length = members.length;
         for (uint256 i = 0; i < length;) {

@@ -11,6 +11,16 @@ import {LibDAOStorage} from "../libraries/LibDAOStorage.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 
 contract GovernanceFacet {
+    // Custom Errors
+    error InvalidVoteValue();
+    error ProposalNotFound();
+    error ProposalNotActive();
+    error VotingEnded();
+    error NotAMember();
+    error AlreadyVoted();
+    error VotingNotEnded();
+    error NoVote();
+    
     event VoteSubmitted(
         bytes32 indexed proposalId,
         address indexed voter,
@@ -30,29 +40,17 @@ contract GovernanceFacet {
      * @param voteValue 0=No, 1=Yes
      */
     function submitVote(bytes32 proposalId, uint8 voteValue) external {
-        require(voteValue <= 1, "GovernanceFacet: Invalid vote value");
+        if (voteValue > 1) revert InvalidVoteValue();
         
         LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
         LibDAOStorage.Proposal storage proposal = ds.proposals[proposalId];
         LibDAOStorage.VotingData storage votingData = ds.votingRecords[proposalId];
         
-        require(proposal.id != bytes32(0), "GovernanceFacet: Proposal not found");
-        require(
-            proposal.status == LibDAOStorage.ProposalStatus.Active,
-            "GovernanceFacet: Not active"
-        );
-        require(
-            block.timestamp <= proposal.votingEndTime,
-            "GovernanceFacet: Voting ended"
-        );
-        require(
-            ds.members[msg.sender].exists,
-            "GovernanceFacet: Not a member"
-        );
-        require(
-            !votingData.hasVoted[msg.sender],
-            "GovernanceFacet: Already voted"
-        );
+        if (proposal.id == bytes32(0)) revert ProposalNotFound();
+        if (proposal.status != LibDAOStorage.ProposalStatus.Active) revert ProposalNotActive();
+        if (block.timestamp > proposal.votingEndTime) revert VotingEnded();
+        if (!ds.members[msg.sender].exists) revert NotAMember();
+        if (votingData.hasVoted[msg.sender]) revert AlreadyVoted();
         
         // Get voting weight (shares)
         uint256 weight = ds.members[msg.sender].shares;
@@ -65,9 +63,9 @@ contract GovernanceFacet {
         
         // Update vote counts
         if (voteValue == 1) {
-            proposal.yesVotes += weight;
+            proposal.yesVotes += uint96(weight);
         } else {
-            proposal.noVotes += weight;
+            proposal.noVotes += uint96(weight);
         }
         
         emit VoteSubmitted(proposalId, msg.sender, voteValue, weight);
@@ -81,15 +79,9 @@ contract GovernanceFacet {
         LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
         LibDAOStorage.Proposal storage proposal = ds.proposals[proposalId];
         
-        require(proposal.id != bytes32(0), "GovernanceFacet: Proposal not found");
-        require(
-            proposal.status == LibDAOStorage.ProposalStatus.Active,
-            "GovernanceFacet: Not active"
-        );
-        require(
-            block.timestamp > proposal.votingEndTime,
-            "GovernanceFacet: Voting not ended"
-        );
+        if (proposal.id == bytes32(0)) revert ProposalNotFound();
+        if (proposal.status != LibDAOStorage.ProposalStatus.Active) revert ProposalNotActive();
+        if (block.timestamp <= proposal.votingEndTime) revert VotingNotEnded();
         
         // Get quorum and majority requirements
         uint256 quorum = ds.configuration[keccak256("QUORUM")];  
@@ -120,18 +112,11 @@ contract GovernanceFacet {
     }
 
     /**
-     * @notice Calculate total voting power (sum of all member shares)
+     * @notice Get total voting power from cache (Optimization #3)
+     * @dev Previously looped through all members - now uses cached value
      */
-    function _getTotalVotingPower() internal view returns (uint256 total) {
-        LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
-        address[] memory members = ds.memberList;
-        
-        uint256 length = members.length;
-        for (uint256 i = 0; i < length;) {
-            uint256 shares = ds.members[members[i]].shares;
-            total += (shares == 0 ? 1 : shares); // Minimum 1 vote
-            unchecked { ++i; }
-        }
+    function _getTotalVotingPower() internal view returns (uint256) {
+        return LibDAOStorage.daoStorage().totalVotingPower;
     }
 
     // View functions

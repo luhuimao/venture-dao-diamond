@@ -11,6 +11,9 @@ import {LibDAOStorage} from "../libraries/LibDAOStorage.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
 
 contract ConfigurationFacet {
+    // Custom Errors
+    error LengthMismatch();
+    
     event ConfigurationUpdated(bytes32 indexed key, uint256 value);
     event AddressConfigurationUpdated(bytes32 indexed key, address value);
     event StringConfigurationUpdated(bytes32 indexed key, string value);
@@ -88,7 +91,7 @@ contract ConfigurationFacet {
         uint256[] calldata values
     ) external {
         LibDiamond.enforceIsContractOwner();
-        require(keys.length == values.length, "ConfigurationFacet: Length mismatch");
+        if (keys.length != values.length) revert LengthMismatch();
         
         LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
         uint256 length = keys.length;

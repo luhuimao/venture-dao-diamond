@@ -9,23 +9,28 @@ pragma solidity ^0.8.0;
 library LibDAOStorage {
     bytes32 constant DAO_STORAGE_POSITION = keccak256("venture.dao.storage");
 
+    // Gas Optimized: Packed into 1 slot (32 bytes)
     struct Member {
-        bool exists;
-        bool isSteward;
-        uint256 shares;
-        uint256 joinedAt;
+        bool exists;          // 1 byte
+        bool isSteward;       // 1 byte  
+        uint64 joinedAt;      // 8 bytes (sufficient until year 2554)
+        uint184 shares;       // 23 bytes (max: ~2.46e55, more than enough)
     }
+    // Slot packing: all 4 fields fit in 1 slot = 1 + 1 + 8 + 23 = 33 bytes → rounds to 32 bytes
 
+    // Gas Optimized: Packed into 3 slots (96 bytes)
     struct Proposal {
-        bytes32 id;
-        address proposer;
-        uint256 createdAt;
-        uint256 votingEndTime;
-        uint256 yesVotes;
-        uint256 noVotes;
-        ProposalStatus status;
-        ProposalType proposalType;
+        bytes32 id;                 // 32 bytes - SLOT 0
+        address proposer;           // 20 bytes - SLOT 1 (0-19)
+        uint64 createdAt;           // 8 bytes  - SLOT 1 (20-27)
+        ProposalStatus status;      // 1 byte   - SLOT 1 (28)
+        ProposalType proposalType;  // 1 byte   - SLOT 1 (29)
+        // 2 bytes padding           SLOT 1 (30-31)
+        uint64 votingEndTime;       // 8 bytes  - SLOT 2 (0-7)
+        uint96 yesVotes;            // 12 bytes - SLOT 2 (8-19)
+        uint96 noVotes;             // 12 bytes - SLOT 2 (20-31)
     }
+    // Slot usage: id(slot0) + proposer+createdAt+status+type(slot1) + votingEndTime+yesVotes+noVotes(slot2) = 3 slots
 
     enum ProposalStatus {
         Pending,
@@ -86,6 +91,9 @@ library LibDAOStorage {
         // Counters
         uint256 proposalCount;
         uint256 memberCount;
+        
+        // Gas Optimization: Cached voting power (Optimization #3)
+        uint256 totalVotingPower;  // Sum of all member voting power (shares, min 1)
     }
 
     function daoStorage() internal pure returns (DAOStorage storage ds) {
