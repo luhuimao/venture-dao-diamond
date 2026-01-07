@@ -17,6 +17,27 @@ import {IDiamondCut} from "./interfaces/IDiamondCut.sol";
  * @dev One-click DAO creation with all facets pre-configured
  */
 contract DAOFactory {
+    // ========== Custom Errors (Gas Optimization) ==========
+    error InvalidDAOType();
+    error NoGenesisMembers();
+    error GenesisMismatch();
+    error InvalidQuorum();
+    error InvalidSupport();
+    error InvalidVotingPeriod();
+    error FacetNotSet(string facetName);
+    error NameRequired();
+    error FoundersRequired();
+    error OwnershipTransferFailed();
+    
+    // ========== Hash Constants (Gas Optimization) ==========
+    bytes32 private constant FLEX_HASH = keccak256("flex");
+    bytes32 private constant VINTAGE_HASH = keccak256("vintage");
+    bytes32 private constant COLLECTIVE_HASH = keccak256("collective");
+    
+    // ========== Function Selector Constants ==========
+    bytes4 private constant TRANSFER_OWNERSHIP_SEL = 0xf2fde38b; // transferOwnership(address)
+    
+    // ========== Events ==========
     event DAOCreated(
         address indexed diamond,
         address indexed creator,
@@ -24,6 +45,9 @@ contract DAOFactory {
         string name
     );
 
+    // ========== Legacy Configuration (Backward Compatible) ==========
+    /// @dev Simplified configuration for quick DAO creation
+    /// @deprecated Use UnifiedDAOConfig for production deployments
     struct DAOConfig {
         string name;
         string daoType; // "flex", "vintage", "collective"
@@ -32,6 +56,82 @@ contract DAOFactory {
         uint256 votingPeriod;
         uint256 quorum;
         uint256 majority;
+    }
+
+    // ========== Unified Configuration (Production) ==========
+    
+    /// @notice Comprehensive DAO configuration supporting all three DAO types
+    struct UnifiedDAOConfig {
+        // Base configuration
+        string name;
+        string daoType;                    // "flex" | "vintage" | "collective"
+        address creator;
+        
+        // Genesis members (Flex: stewards, Vintage: GPs, Collective: governors)
+        address[] genesisMembers;
+        uint256[] genesisAllocations;
+        
+        // Core configurations
+        VotingConfig votingConfig;
+        MembershipConfig governorConfig;   // Governor/GP eligibility
+        MembershipConfig proposerConfig;   // Proposer eligibility (Flex only)
+        MembershipConfig investorConfig;   // Investor eligibility (Flex only)
+        FeeConfig feeConfig;
+        AdvancedConfig advancedConfig;     // Optional advanced features
+    }
+    
+    /// @notice Voting configuration with DAO-type-specific options
+    struct VotingConfig {
+        uint256 votingPeriod;              // Voting duration in seconds
+        uint256 quorum;                    // Minimum participation (0-100)
+        uint256 supportRequired;           // Support threshold (0-100)
+        uint256 gracePeriod;               // Grace period after voting (Collective)
+        uint256 executingPeriod;           // Execution period (Vintage)
+    }
+    
+    /// @notice Membership eligibility configuration
+    struct MembershipConfig {
+        bool enable;                       // Enable this membership check
+        uint8 verifyType;                  // 0=ERC20, 1=ERC721, 2=ERC1155, 3=WHITELIST, 4=DEPOSIT
+        address tokenAddress;              // Token contract address (if applicable)
+        uint256 tokenId;                   // Token ID (for ERC721/ERC1155)
+        uint256 minAmount;                 // Minimum holding/deposit amount
+        address[] whitelist;               // Whitelist addresses (if verifyType=3)
+    }
+    
+    /// @notice Fee configuration for different DAO types
+    struct FeeConfig {
+        // Flex DAO fees
+        uint256 managementFee;             // Management fee (basis points, e.g., 200 = 2%)
+        uint256 returnTokenManagementFee;  // Redemption/buyback fee (Flex)
+        
+        // Collective DAO fees
+        uint256 redemptionFee;             // Redemption fee (Collective)
+        uint256 proposerRewardRatio;       // Proposer reward percentage (Collective)
+        address fundRaisingToken;          // Fund raising token address (Collective)
+    }
+    
+    /// @notice Advanced/optional features configuration
+    struct AdvancedConfig {
+        // Flex - Priority deposit
+        bool priorityDepositEnable;
+        uint256 priorityPeriod;            // Priority deposit period in seconds
+        address[] priorityWhitelist;
+        
+        // Flex - Investor cap
+        bool investorCapEnable;
+        uint256 maxInvestors;
+        
+        // Flex - Polling (dual voting system)
+        bool pollingEnable;
+        VotingConfig pollingVotingConfig;
+        MembershipConfig pollingVoterConfig;
+        
+        // Collective - Investor capacity
+        uint256 collectiveInvestorCap;
+        
+        // Vintage - Rice reward receiver
+        address riceRewardReceiver;
     }
 
     // Facet addresses (deployed once, reused for all DAOs)
@@ -121,19 +221,17 @@ contract DAOFactory {
     }
 
     /**
-     * @notice Create a new DAO with Diamond pattern
+     * @notice Create a new DAO with Diamond pattern (Legacy - Simplified)
      * @param config DAO configuration
      * @return diamond Address of the newly created diamond
+     * @dev Deprecated: Use createDAO(UnifiedDAOConfig) for production
      */
     function createDAO(
         DAOConfig calldata config
     ) external returns (address diamond) {
-        require(bytes(config.name).length > 0, "DAOFactory: Name required");
-        require(config.founders.length > 0, "DAOFactory: Founders required");
-        require(
-            config.founders.length == config.allocations.length,
-            "DAOFactory: Founders/allocations mismatch"
-        );
+        if (bytes(config.name).length == 0) revert NameRequired();
+        if (config.founders.length == 0) revert FoundersRequired();
+        if (config.founders.length != config.allocations.length) revert GenesisMismatch();
 
         // 1. Deploy Diamond proxy with factory as temporary owner
         // This allows factory to install facets
@@ -159,6 +257,40 @@ contract DAOFactory {
     }
 
     /**
+     * @notice Create a new DAO with Diamond pattern (Production - Full Configuration)
+     * @param config Unified DAO configuration supporting all DAO types
+     * @return diamond Address of the newly created diamond
+     */
+    function createDAO(
+        UnifiedDAOConfig calldata config
+    ) external returns (address diamond) {
+        // Validate configuration
+        _validateUnifiedConfig(config);
+
+        // 1. Deploy Diamond proxy
+        diamond = _deployDiamond(address(this));
+
+        // 2. Install core facets
+        _installCoreFacets(diamond);
+
+        // 3. Install business facets
+        _installBusinessFacets(diamond);
+
+        // 4. Initialize DiamondInit
+        _initializeDiamond(diamond);
+
+        // 5. Initialize DAO with unified configuration
+        _initializeUnifiedDAO(diamond, config);
+
+        // 6. Transfer ownership
+        address finalOwner = config.creator != address(0) ? config.creator : msg.sender;
+        _transferOwnership(diamond, finalOwner);
+
+        emit DAOCreated(diamond, finalOwner, config.daoType, config.name);
+        return diamond;
+    }
+
+    /**
      * @notice Deploy Diamond proxy
      */
     function _deployDiamond(address owner) internal returns (address) {
@@ -170,10 +302,9 @@ contract DAOFactory {
      * @notice Transfer Diamond ownership
      */
     function _transferOwnership(address diamond, address newOwner) internal {
-        // Get OwnershipFacet interface
-        bytes4 selector = bytes4(keccak256("transferOwnership(address)"));
-        (bool success, ) = diamond.call(abi.encodeWithSelector(selector, newOwner));
-        require(success, "DAOFactory: Ownership transfer failed");
+        // Use cached selector constant
+        (bool success, ) = diamond.call(abi.encodeWithSelector(TRANSFER_OWNERSHIP_SEL, newOwner));
+        if (!success) revert OwnershipTransferFailed();
     }
 
     /**
@@ -216,11 +347,11 @@ contract DAOFactory {
      * @notice Install business facets
      */
     function _installBusinessFacets(address diamond) internal {
-        require(configurationFacet != address(0), "DAOFactory: ConfigurationFacet not set");
-        require(membershipFacet != address(0), "DAOFactory: MembershipFacet not set");
-        require(proposalFacet != address(0), "DAOFactory: ProposalFacet not set");
-        require(governanceFacet != address(0), "DAOFactory: GovernanceFacet not set");
-        require(fundingFacet != address(0), "DAOFactory: FundingFacet not set");
+        if (configurationFacet == address(0)) revert FacetNotSet("ConfigurationFacet");
+        if (membershipFacet == address(0)) revert FacetNotSet("MembershipFacet");
+        if (proposalFacet == address(0)) revert FacetNotSet("ProposalFacet");
+        if (governanceFacet == address(0)) revert FacetNotSet("GovernanceFacet");
+        if (fundingFacet == address(0)) revert FacetNotSet("FundingFacet");
 
         IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](5);
 
@@ -383,6 +514,93 @@ contract DAOFactory {
         membershipFacet = _membershipFacet;
         proposalFacet = _proposalFacet;
         configurationFacet = _configurationFacet;
+    }
+
+    /**
+     * @notice Validate unified DAO configuration
+     */
+    function _validateUnifiedConfig(UnifiedDAOConfig calldata config) internal pure {
+        require(bytes(config.name).length > 0, "DAOFactory: Name required");
+        
+        bytes32 daoTypeHash = keccak256(bytes(config.daoType));
+        require(
+            daoTypeHash == keccak256("flex") ||
+            daoTypeHash == keccak256("vintage") ||
+            daoTypeHash == keccak256("collective"),
+            "DAOFactory: Invalid DAO type"
+        );
+        
+        if (config.genesisMembers.length > 0) {
+            require(
+                config.genesisMembers.length == config.genesisAllocations.length,
+                "DAOFactory: Genesis members/allocations mismatch"
+            );
+        }
+        
+        require(config.votingConfig.votingPeriod > 0, "DAOFactory: Invalid voting period");
+        require(config.votingConfig.quorum <= 100, "DAOFactory: Quorum must be <= 100");
+        require(config.votingConfig.supportRequired <= 100, "DAOFactory: Support must be <= 100");
+    }
+
+    /**
+     * @notice Initialize unified DAO configuration
+     */
+    function _initializeUnifiedDAO(
+        address diamond,
+        UnifiedDAOConfig calldata config
+    ) internal {
+        bytes memory votingConfigData = abi.encode(
+            config.votingConfig.votingPeriod,
+            config.votingConfig.quorum,
+            config.votingConfig.supportRequired,
+            config.votingConfig.gracePeriod,
+            config.votingConfig.executingPeriod
+        );
+        
+        bytes memory governorConfigData = abi.encode(
+            config.governorConfig.enable,
+            config.governorConfig.verifyType,
+            config.governorConfig.tokenAddress,
+            config.governorConfig.tokenId,
+            config.governorConfig.minAmount,
+            config.governorConfig.whitelist
+        );
+        
+        bytes memory feeConfigData = abi.encode(
+            config.feeConfig.managementFee,
+            config.feeConfig.returnTokenManagementFee,
+            config.feeConfig.redemptionFee,
+            config.feeConfig.proposerRewardRatio,
+            config.feeConfig.fundRaisingToken
+        );
+        
+        // Encode advanced configuration
+        bytes memory advancedConfigData = abi.encode(
+            config.advancedConfig.priorityDepositEnable,
+            config.advancedConfig.priorityPeriod,
+            config.advancedConfig.investorCapEnable,
+            config.advancedConfig.maxInvestors
+        );
+        
+        bytes memory configPayload = abi.encode(
+            config.name,
+            config.daoType,
+            config.creator,
+            config.genesisMembers,
+            config.genesisAllocations,
+            votingConfigData,
+            governorConfigData,
+            feeConfigData,
+            advancedConfigData
+        );
+        
+        bytes memory initCalldata = abi.encodeWithSignature(
+            "initUnified(bytes)",
+            configPayload
+        );
+        
+        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](0);
+        IDiamondCut(diamond).diamondCut(cuts, daoInit, initCalldata);
     }
 
     /**

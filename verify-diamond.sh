@@ -80,10 +80,9 @@ echo "========================================="
 echo ""
 echo "下一步:"
 echo "  1. 运行测试: forge test --match-contract DiamondTest"
-
+forge test --match-contract DAOTypeTest
 forge test --match-contract DiamondTest
-
+forge test --match-contract UnifiedDAOConfigTest
 echo "  2. 启动Anvil: anvil"
 echo "  3. 部署: forge script script/foundry/DeployDiamond.s.sol --broadcast"
 echo ""
-forge test --match-contract DiamondTest

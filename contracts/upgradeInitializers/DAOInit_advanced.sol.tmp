@@ -1,0 +1,26 @@
+    /**
+     * @notice Set advanced configuration options
+     */
+    function _setAdvancedConfig(bytes memory data) internal {
+        (
+            bool priorityDepositEnable,
+            uint256 priorityPeriod,
+            bool investorCapEnable,
+            uint256 maxInvestors
+        ) = abi.decode(data, (bool, uint256, bool, uint256));
+        
+        LibDAOStorage.DAOStorage storage ds = LibDAOStorage.daoStorage();
+        
+        // Priority deposit configuration
+        if (priorityDepositEnable) {
+            ds.configuration[keccak256("PRIORITY_DEPOSIT_ENABLE")] = 1;
+            ds.configuration[keccak256("PRIORITY_PERIOD")] = priorityPeriod;
+        }
+        
+        // Investor cap configuration
+        if (investorCapEnable) {
+            ds.configuration[keccak256("INVESTOR_CAP_ENABLE")] = 1;
+            ds.configuration[keccak256("MAX_INVESTORS")] = maxInvestors;
+        }
+    }
+}

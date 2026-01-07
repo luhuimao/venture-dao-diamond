@@ -1,0 +1,112 @@
+    /**
+     * @notice Validate unified DAO configuration
+     * @dev Internal validation function for UnifiedDAOConfig
+     */
+    function _validateUnifiedConfig(UnifiedDAOConfig calldata config) internal pure {
+        require(bytes(config.name).length > 0, "DAOFactory: Name required");
+        
+        // Validate DAO type
+        bytes32 daoTypeHash = keccak256(bytes(config.daoType));
+        require(
+            daoTypeHash == keccak256("flex") ||
+            daoTypeHash == keccak256("vintage") ||
+            daoTypeHash == keccak256("collective"),
+            "DAOFactory: Invalid DAO type"
+        );
+        
+        // Validate genesis members
+        if (config.genesisMembers.length > 0) {
+            require(
+                config.genesisMembers.length == config.genesisAllocations.length,
+                "DAOFactory: Genesis members/allocations mismatch"
+            );
+        }
+        
+        // Validate voting configuration
+        require(config.votingConfig.votingPeriod > 0, "DAOFactory: Invalid voting period");
+        require(config.votingConfig.quorum <= 100, "DAOFactory: Quorum must be <= 100");
+        require(config.votingConfig.supportRequired <= 100, "DAOFactory: Support must be <= 100");
+        
+        // DAO-type specific validation
+        if (daoTypeHash == keccak256("flex")) {
+            // Flex requires priority deposit or investor cap if enabled
+            if (config.advancedConfig.priorityDepositEnable) {
+                require(config.advancedConfig.priorityPeriod > 0, "DAOFactory: Invalid priority period");
+            }
+        } else if (daoTypeHash == keccak256("vintage")) {
+            // Vintage should have executing period
+            require(config.votingConfig.executingPeriod > 0, "DAOFactory: Vintage requires executing period");
+        } else if (daoTypeHash == keccak256("collective")) {
+            // Collective should have grace period
+            require(config.votingConfig.gracePeriod > 0, "DAOFactory: Collective requires grace period");
+        }
+    }
+
+    /**
+     * @notice Initialize unified DAO configuration
+     * @dev Calls DAOInit.initUnified with encoded configuration
+     */
+    function _initializeUnifiedDAO(
+        address diamond,
+        UnifiedDAOConfig calldata config
+    ) internal {
+        // Encode voting configuration
+        bytes memory votingConfigData = abi.encode(
+            config.votingConfig.votingPeriod,
+            config.votingConfig.quorum,
+            config.votingConfig.supportRequired,
+            config.votingConfig.gracePeriod,
+            config.votingConfig.executingPeriod
+        );
+        
+        // Encode governor membership configuration
+        bytes memory governorConfigData = _encodeMembershipConfig(config.governorConfig);
+        
+        // Encode fee configuration
+        bytes memory feeConfigData = abi.encode(
+            config.feeConfig.managementFee,
+            config.feeConfig.returnTokenManagementFee,
+            config.feeConfig.redemptionFee,
+            config.feeConfig.proposerRewardRatio,
+            config.feeConfig.fundRaisingToken
+        );
+        
+        // Create main config payload
+        bytes memory configPayload = abi.encode(
+            config.name,
+            config.daoType,
+            config.creator,
+            config.genesisMembers,
+            config.genesisAllocations,
+            votingConfig Data,
+            governorConfigData,
+            feeConfigData
+        );
+        
+        // Prepare init call to DAOInit.initUnified
+        bytes memory initCalldata = abi.encodeWithSignature(
+            "initUnified(bytes)",
+            configPayload
+        );
+        
+        // Execute via delegatecall
+        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](0);
+        IDiamondCut(diamond).diamondCut(cuts, daoInit, initCalldata);
+    }
+    
+    /**
+     * @notice Helper function to encode membership configuration
+     */
+    function _encodeMembershipConfig(
+        MembershipConfig calldata config
+    ) internal pure returns (bytes memory) {
+        return abi.encode(
+            config.enable,
+            config.verifyType,
+            config.tokenAddress,
+            config.tokenId,
+            config.minAmount,
+            config.whitelist
+        );
+    }
+}

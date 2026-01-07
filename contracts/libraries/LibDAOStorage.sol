@@ -94,6 +94,9 @@ library LibDAOStorage {
         
         // Gas Optimization: Cached voting power (Optimization #3)
         uint256 totalVotingPower;  // Sum of all member voting power (shares, min 1)
+        
+        // Additional whitelist for UnifiedDAOConfig
+        mapping(address => bool) governorWhitelist;
     }
 
     function daoStorage() internal pure returns (DAOStorage storage ds) {
