@@ -1,7 +1,5 @@
 # Diamond DAO Gas优化
 
-## 🎯 立即可实施的优化（高ROI）
-
 ### 优化#1: DAOFactory Selector缓存
 
 **影响**: 每次创建DAO节省 ~2000 gas  
