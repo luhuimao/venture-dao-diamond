@@ -1,6 +1,6 @@
 # Diamond DAO Gas优化
 
-### 优化#1: DAOFactory Selector缓存
+## 优化#1: DAOFactory Selector缓存
 
 **影响**: 每次创建DAO节省 ~2000 gas  
 
@@ -24,7 +24,7 @@ configSelectors[1] = SEL_GET_CONFIG;
 
 ---
 
-### 优化#2: Storage Struct Packing
+## 优化#2: Storage Struct Packing
 
 **影响**: 每个成员节省 ~15000 gas，每个提案节省~60000 gas  
 
@@ -57,7 +57,7 @@ struct Proposal {
 
 ---
 
-### 优化#3: VotingPower缓存
+## 优化#3: VotingPower缓存
 
 **影响**: 每次投票处理节省 ~5000 gas  
 
@@ -89,7 +89,7 @@ function _getTotalVotingPower() internal view returns (uint256) {
 
 ---
 
-### 优化#4: Custom Errors
+## 优化#4: Custom Errors
 
 **影响**: 每次revert节省 ~50 gas  
 
